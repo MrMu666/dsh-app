@@ -1,18 +1,35 @@
 # dsh-app
 
-用于在 App 内打开特定一组页面的应用。基于 **Tauri 2 + React 19 + TypeScript + Vite**。
+DeepSeek Harness 客户端：在 App 内打开局域网内指定地址的 DeepSeek Harness 页面。
+
+基于 **Tauri 2 + React 19 + TypeScript + Vite**。
 
 > 打包完全依赖 GitHub Actions，本机不进行打包（本机只用于编写和调试代码）。
+
+## 功能
+
+- **欢迎页**：提示"请选择或输入您的 DeepSeek Harness 地址，如 192.168.1.1:3080"；
+  下方列出所有输入过的地址（按钮），列表下方输入框可添加新地址；无历史地址时不显示按钮区。
+- **浏览页**：顶栏（左：返回按钮；中：地址下拉，默认当前地址，点击可切换任意历史地址；
+  右：强制刷新按钮）+ 页面内容。
+- **Cookie 与存储**：远程页面（DeepSeek Harness）的 Cookie / localStorage / sessionStorage
+  由系统 WebView 原生管理并持久化（Windows WebView2、Android WebView、iOS WKWebView），
+  与普通浏览器行为一致：不同地址（源）的存储相互独立，重启 App 后保留，与系统浏览器数据隔离。
 
 ## 目录结构
 
 ```
-├── src/                  # 前端页面（React，当前为空页面，等待需求）
-├── src-tauri/            # Tauri 壳（Rust）
-│   ├── src/              # Rust 代码（Tauri commands）
-│   └── tauri.conf.json   # 应用配置（名称 / 标识符 / 窗口 / 图标）
+├── src/                          # 前端（React）
+│   ├── lib/addresses.ts          # 地址规范化 + 地址历史持久化（localStorage）
+│   ├── components/
+│   │   ├── Welcome.tsx           # 欢迎页：地址按钮列表 + 新地址输入
+│   │   └── BrowserView.tsx       # 浏览页：顶栏（返回/下拉/刷新）+ iframe
+│   └── App.tsx                   # 视图状态机（欢迎页 ⇄ 浏览页）+ 浏览历史
+├── src-tauri/                    # Tauri 壳（Rust）
+│   ├── src/                      # Rust 代码
+│   └── tauri.conf.json           # 应用配置（名称 / 标识符 / 窗口 / 图标）
 └── .github/workflows/
-    └── mobile-build.yml  # Android(APK/AAB) + iOS(IPA) 打包工作流
+    └── mobile-build.yml          # Android(APK/AAB) + iOS(IPA) 打包工作流
 ```
 
 ## 本地开发（仅写代码，不打包）
@@ -22,6 +39,15 @@ npm install        # 安装依赖
 npm run tauri dev  # 启动桌面开发模式（本机已具备 Rust + MSVC + WebView2）
 ```
 
+## 移动端明文 HTTP（内网地址）说明
+
+DeepSeek Harness 通常部署在局域网、以 `http://192.168.1.1:3080` 明文访问，而移动系统默认禁止：
+
+- **Android**：CI 构建时自动设置 `android:usesCleartextTraffic="true"`
+  （见 workflow 的 "Allow cleartext HTTP for LAN addresses" 步骤）。
+- **iOS**：CI 构建时自动注入 `NSAppTransportSecurity > NSAllowsArbitraryLoads` 豁免
+  （见 workflow 的 "Allow cleartext HTTP (ATS) for LAN addresses" 步骤）。
+
 ## CI 打包（GitHub Actions）
 
 推送到 GitHub 后：
@@ -29,6 +55,9 @@ npm run tauri dev  # 启动桌面开发模式（本机已具备 Rust + MSVC + We
 1. **手动触发**：仓库 Actions 页面 → `mobile-build` → Run workflow，可选 `both / android / ios`；
 2. **打 tag 自动触发**：`git tag v0.1.0 && git push origin v0.1.0`，同时构建 Android 和 iOS，并由
    [tauri-action](https://github.com/tauri-apps/tauri-action) 发布到 GitHub Release（`app-v0.1.0`）。
+
+Android 工程与 iOS 工程（`gen/apple`）均在 CI 内自动生成（iOS 需要 macOS runner 执行
+`tauri ios init`），无需在本地生成或提交。
 
 ### 需要配置的 Secrets（仓库 Settings → Secrets and variables → Actions）
 
@@ -40,9 +69,9 @@ npm run tauri dev  # 启动桌面开发模式（本机已具备 Rust + MSVC + We
 
 ### iOS 注意事项
 
-- iOS 的 Xcode 工程（`src-tauri/gen/apple`）必须在 **macOS** 上执行一次
-  `npm run tauri -- ios init` 生成后**提交进仓库**，CI 才能构建。
-- Windows 无法交叉编译 iOS，本机不可能出 iOS 包。
+- iOS 的 Xcode 工程（`src-tauri/gen/apple`）只能由 **macOS** 生成，CI 的 macos-14 runner 会自动执行
+  `tauri ios init` 完成，Windows 本机无法交叉编译 iOS。
+- 免费 Apple 账号无法在 CI 上长期签名分发；未配置签名 Secrets 时产出未签名包（仅测试用）。
 
 ## 应用标识
 

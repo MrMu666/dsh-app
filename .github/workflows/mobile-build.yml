@@ -7,8 +7,8 @@
 # Android 产物：APK + AAB（debug 签名；正式签名见下方注释）
 # iOS 产物：IPA（未配置 Apple Secrets 时为未签名包，仅用于测试）
 #
-# ⚠️ iOS 前置条件：src-tauri/gen/apple 的 Xcode 工程必须在 Mac 上执行一次
-#    `npm run tauri -- ios init` 生成后提交进仓库，否则 iOS job 无法构建。
+# ⚠️ iOS 工程（src-tauri/gen/apple）由 CI 在本 job 内自动执行 `tauri ios init` 生成，
+#    无需在 Mac 上手动生成并提交（Windows 上也生不成）。
 
 name: mobile-build
 
@@ -62,6 +62,14 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
+      - name: Init Android project
+        run: npm run tauri -- android init
+
+      # 内网 DeepSeek Harness 地址是明文 HTTP（如 192.168.1.1:3080），
+      # Android 9+ 默认禁止明文流量，需要在 application 标签上开启
+      - name: Allow cleartext HTTP for LAN addresses
+        run: sed -i 's|<application|<application android:usesCleartextTraffic="true"|' src-tauri/gen/android/app/src/main/AndroidManifest.xml
+
       - name: Build Android (APK/AAB)
         uses: tauri-apps/tauri-action@v0
         env:
@@ -106,6 +114,19 @@ jobs:
 
       - name: Install frontend dependencies
         run: npm ci
+
+      - name: Init iOS Xcode project
+        run: npm run tauri -- ios init
+
+      # 内网 DeepSeek Harness 地址是明文 HTTP（如 192.168.1.1:3080），
+      # iOS ATS 默认禁止，需要注入 NSAllowsArbitraryLoads 豁免
+      - name: Allow cleartext HTTP (ATS) for LAN addresses
+        run: |
+          PLIST=$(find src-tauri/gen/apple -name "Info.plist" -not -path "*Pods*" | head -n 1)
+          echo "Info.plist: $PLIST"
+          /usr/libexec/PlistBuddy -c "Delete :NSAppTransportSecurity" "$PLIST" 2>/dev/null || true
+          /usr/libexec/PlistBuddy -c "Add :NSAppTransportSecurity dict" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Add :NSAppTransportSecurity:NSAllowsArbitraryLoads bool true" "$PLIST"
 
       - name: Build iOS (IPA)
         uses: tauri-apps/tauri-action@v0

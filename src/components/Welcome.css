@@ -1,0 +1,126 @@
+.welcome {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.welcome-card {
+  width: 100%;
+  max-width: 420px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.welcome-title {
+  font-size: 24px;
+  font-weight: 600;
+  text-align: center;
+}
+
+.welcome-hint {
+  font-size: 14px;
+  color: #6b7280;
+  text-align: center;
+  line-height: 1.6;
+}
+
+.address-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 40vh;
+  overflow-y: auto;
+}
+
+.address-btn {
+  width: 100%;
+  padding: 12px 16px;
+  font-size: 15px;
+  font-family: inherit;
+  color: #111827;
+  background-color: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.15s, background-color 0.15s;
+}
+
+.address-btn:hover {
+  border-color: #2563eb;
+  background-color: #eff6ff;
+}
+
+.address-form {
+  display: flex;
+  gap: 8px;
+}
+
+.address-input {
+  flex: 1;
+  min-width: 0;
+  padding: 12px 14px;
+  font-size: 15px;
+  font-family: inherit;
+  color: #111827;
+  background-color: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  outline: none;
+}
+
+.address-input:focus {
+  border-color: #2563eb;
+}
+
+.address-go {
+  padding: 0 20px;
+  font-size: 15px;
+  font-family: inherit;
+  font-weight: 500;
+  color: #ffffff;
+  background-color: #2563eb;
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+.address-go:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.address-error {
+  font-size: 13px;
+  color: #dc2626;
+  text-align: center;
+}
+
+@media (prefers-color-scheme: dark) {
+  .welcome-title {
+    color: #f6f6f6;
+  }
+
+  .welcome-hint {
+    color: #9ca3af;
+  }
+
+  .address-btn,
+  .address-input {
+    color: #f6f6f6;
+    background-color: #1f2937;
+    border-color: #374151;
+  }
+
+  .address-btn:hover {
+    border-color: #3b82f6;
+    background-color: #1e3a5f;
+  }
+
+  .address-input:focus {
+    border-color: #3b82f6;
+  }
+}
