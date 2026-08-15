@@ -22,3 +22,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Agent 长期记忆文件（仅本地维护，不提交）
+Agents.md
