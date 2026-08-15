@@ -19,13 +19,20 @@
 }
 
 html,
-body,
+body {
+  height: 100%;
+  overflow: hidden; /* 禁止页面级横向/纵向滚动（含左右滑动溢出） */
+  overscroll-behavior: none; /* 阻止滚动链传导 */
+}
+
 #root {
   height: 100%;
+  overflow: hidden;
 }
 
 .app-browser {
   height: 100%;
+  overflow: hidden;
 }
 
 body {

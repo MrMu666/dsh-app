@@ -2,6 +2,8 @@
   height: 100%;
   display: flex;
   flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .browser-bar {
@@ -13,6 +15,7 @@
   background-color: #f3f4f6;
   border-bottom: 1px solid #e5e7eb;
   flex-shrink: 0;
+  min-width: 0;
 }
 
 .bar-btn {
@@ -72,7 +75,9 @@
 .browser-body {
   flex: 1;
   min-height: 0;
+  min-width: 0;
   position: relative;
+  overflow: hidden;
 }
 
 .browser-frame {
