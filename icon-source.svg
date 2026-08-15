@@ -1,0 +1,77 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <clipPath id="bodyClip">
+      <ellipse cx="0" cy="0" rx="320" ry="200"/>
+    </clipPath>
+  </defs>
+
+  <!-- white background -->
+  <rect width="1024" height="1024" fill="#ffffff"/>
+
+  <!-- water splash (behind the whale) -->
+  <g fill="#DBEAF4">
+    <ellipse cx="150" cy="880" rx="430" ry="160"/>
+    <ellipse cx="880" cy="910" rx="430" ry="140"/>
+  </g>
+  <g fill="#BFDBFE">
+    <ellipse cx="480" cy="905" rx="470" ry="155"/>
+    <ellipse cx="160" cy="800" rx="350" ry="115"/>
+    <ellipse cx="900" cy="825" rx="310" ry="105"/>
+  </g>
+
+  <!-- whale, leaping up-right -->
+  <g transform="translate(500 400) rotate(-38)">
+    <!-- tail fluke -->
+    <path fill="#2563EB" d="M -240 0 C -340 -30 -400 -120 -430 -160
+                           C -388 -78 -355 -10 -368 8
+                           C -355 24 -388 95 -430 160
+                           C -400 120 -340 30 -240 0 Z"/>
+    <!-- dorsal bump -->
+    <path fill="#3B82F6" d="M -150 -120 C -168 -215 -70 -238 -34 -196
+                           C -96 -186 -142 -160 -150 -120 Z"/>
+    <!-- body -->
+    <ellipse cx="0" cy="0" rx="320" ry="200" fill="#3B82F6"/>
+    <!-- belly (clipped to body) -->
+    <g clip-path="url(#bodyClip)">
+      <ellipse cx="0" cy="82" rx="300" ry="150" fill="#BFDBFE"/>
+    </g>
+    <!-- pectoral fin -->
+    <path fill="#2563EB" d="M 70 112 C 40 186 -20 232 -86 246
+                           C -20 212 10 162 70 112 Z"/>
+    <!-- blowhole spray -->
+    <path d="M 118 -158 C 112 -206 72 -228 40 -218"
+          fill="none" stroke="#60A5FA" stroke-width="10" stroke-linecap="round"/>
+    <g fill="#60A5FA">
+      <circle cx="128" cy="-208" r="13"/>
+      <circle cx="76" cy="-242" r="10"/>
+      <circle cx="38" cy="-228" r="9"/>
+    </g>
+    <!-- eye -->
+    <circle cx="218" cy="-66" r="44" fill="#ffffff"/>
+    <circle cx="230" cy="-56" r="21" fill="#1E3A8A"/>
+    <circle cx="224" cy="-66" r="8" fill="#ffffff"/>
+    <!-- smile -->
+    <path d="M 182 34 Q 238 90 292 24" fill="none"
+          stroke="#1E3A8A" stroke-width="11" stroke-linecap="round"/>
+    <!-- cheek -->
+    <circle cx="152" cy="-4" r="21" fill="#FBCFE8" opacity="0.75"/>
+  </g>
+
+  <!-- front water over the tail base, so the whale looks like it is emerging -->
+  <g fill="#93C5FD">
+    <ellipse cx="200" cy="760" rx="260" ry="85" opacity="0.9"/>
+    <ellipse cx="120" cy="830" rx="280" ry="75" opacity="0.85"/>
+  </g>
+
+  <!-- flying droplets -->
+  <g fill="#60A5FA">
+    <circle cx="760" cy="300" r="18"/>
+    <circle cx="820" cy="380" r="13"/>
+    <circle cx="690" cy="450" r="11"/>
+    <circle cx="300" cy="560" r="16"/>
+    <circle cx="200" cy="630" r="12"/>
+    <circle cx="420" cy="560" r="10"/>
+    <circle cx="140" cy="700" r="9"/>
+    <circle cx="600" cy="520" r="11"/>
+  </g>
+</svg>
