@@ -25,3 +25,7 @@ dist-ssr
 
 # Agent 长期记忆文件（仅本地维护，不提交）
 Agents.md
+
+# Android 签名密钥与签名信息（本地保管，勿提交）
+dsh-app-upload.keystore
+dsh-app-signing-info.txt
