@@ -1,52 +1,58 @@
 import { useEffect, useRef, useState } from "react";
 import { toUrl } from "../lib/addresses";
+import type { PoolEntry } from "../lib/pool";
 import "./BrowserView.css";
 
 interface BrowserViewProps {
-  /** 当前地址（展示形式，如 192.168.1.1:3080） */
+  /** 当前地址（展示形式，如 192.168.1.1:3080）；欢迎页时为 "" */
   current: string;
   /** 全部输入过的地址（顶栏下拉列表） */
   addresses: string[];
+  /** 页面实例池：池中每个地址渲染一个常驻 iframe（非当前地址隐藏保留，不重新加载） */
+  pool: Record<string, PoolEntry>;
   /** 返回（历史后退；无历史时回到欢迎页） */
   onBack: () => void;
   /** 下拉选择其他地址 */
   onSelect: (address: string) => void;
+  /** 强制刷新当前页面（代次 +1 → 重建 iframe） */
+  onRefresh: () => void;
 }
 
 /** 加载超时时间（毫秒），超过则提示无法加载 */
 const LOAD_TIMEOUT_MS = 20000;
 
-function BrowserView({ current, addresses, onBack, onSelect }: BrowserViewProps) {
-  const [reloadKey, setReloadKey] = useState(0);
-  const [loading, setLoading] = useState(true);
+function BrowserView({ current, addresses, pool, onBack, onSelect, onRefresh }: BrowserViewProps) {
+  /** 已成功加载过的 iframe 实例键（`地址#代次`），用于区分"复用已有实例"与"新建加载" */
+  const [loadedKeys, setLoadedKeys] = useState<Set<string>>(new Set());
   const [loadError, setLoadError] = useState(false);
   const timerRef = useRef<number | null>(null);
 
-  const url = toUrl(current);
+  const currentEntry = current ? pool[current] : undefined;
+  const currentKey = current ? `${current}#${currentEntry?.gen ?? 0}` : "";
+  const isLoaded = loadedKeys.has(currentKey);
 
-  // 地址切换或强制刷新时：重置加载状态，并启动超时检测
+  // 地址切换或实例重建（代次变化）时：复用已有实例则不显示加载；
+  // 新建实例启动超时检测（加载失败提示）
   useEffect(() => {
-    setLoading(true);
     setLoadError(false);
     if (timerRef.current !== null) window.clearTimeout(timerRef.current);
+    if (!current || isLoaded) return;
     timerRef.current = window.setTimeout(() => {
-      setLoading(false);
       setLoadError(true);
     }, LOAD_TIMEOUT_MS);
     return () => {
       if (timerRef.current !== null) window.clearTimeout(timerRef.current);
     };
-  }, [url, reloadKey]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [current, currentKey]);
 
-  function handleLoad() {
-    if (timerRef.current !== null) window.clearTimeout(timerRef.current);
-    setLoading(false);
-    setLoadError(false);
-  }
-
-  // 强制刷新：更换 iframe 的 key 以重建元素，重新发起加载
-  function refresh() {
-    setReloadKey((k) => k + 1);
+  function handleLoad(addr: string) {
+    const key = `${addr}#${pool[addr]?.gen ?? 0}`;
+    setLoadedKeys((prev) => new Set(prev).add(key));
+    if (addr === current) {
+      if (timerRef.current !== null) window.clearTimeout(timerRef.current);
+      setLoadError(false);
+    }
   }
 
   return (
@@ -81,7 +87,7 @@ function BrowserView({ current, addresses, onBack, onSelect }: BrowserViewProps)
         <button
           type="button"
           className="bar-btn"
-          onClick={refresh}
+          onClick={onRefresh}
           title="强制刷新"
           aria-label="强制刷新"
         >
@@ -92,19 +98,24 @@ function BrowserView({ current, addresses, onBack, onSelect }: BrowserViewProps)
       </header>
 
       <div className="browser-body">
-        {loading && <div className="browser-overlay">加载中…</div>}
+        {current && !isLoaded && !loadError && (
+          <div className="browser-overlay">加载中…</div>
+        )}
         {loadError && (
           <div className="browser-overlay browser-overlay-error">
             无法加载 {current}，请检查地址和网络后重试。
           </div>
         )}
-        <iframe
-          key={`${url}#${reloadKey}`}
-          className="browser-frame"
-          src={url}
-          onLoad={handleLoad}
-          title={current}
-        />
+        {Object.entries(pool).map(([addr, entry]) => (
+          <iframe
+            key={`${addr}#${entry.gen}`}
+            className="browser-frame"
+            src={toUrl(addr)}
+            onLoad={() => handleLoad(addr)}
+            title={addr}
+            style={{ display: addr === current ? undefined : "none" }}
+          />
+        ))}
       </div>
     </div>
   );

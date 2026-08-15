@@ -78,6 +78,11 @@ jobs:
       - name: Allow cleartext HTTP for LAN addresses
         run: sed -i 's|android:usesCleartextTraffic="${usesCleartextTraffic}"|android:usesCleartextTraffic="true"|' src-tauri/gen/android/app/src/main/AndroidManifest.xml
 
+      # Android 15+/16 强制 edge-to-edge，WebView 内容会侵占状态栏；
+      # 在主题中 opt-out，让 App 内容从状态栏下方开始（Android 14- 无此属性，忽略即可）
+      - name: Keep app content below Android status bar
+        run: find src-tauri/gen/android/app/src/main/res -name "themes.xml" -exec sed -i 's|<!-- Customize your theme here. -->|<item name="android:windowOptOutEdgeToEdgeEnforcement">true</item>|' {} +
+
       # 配置了签名 Secrets（ANDROID_KEYSTORE_BASE64 等）时：注入 release 签名并构建
       # 正式签名 release 包（APK/AAB，--split-per-abi 按 CPU 架构拆包，单包更小）；
       # 未配置时回退 debug 构建（debug 签名可安装，但体积大，仅测试用）

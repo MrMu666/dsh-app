@@ -19,6 +19,9 @@ DeepSeek Harness 客户端：在 App 内打开局域网内指定地址的 DeepSe
 - **Cookie 与存储**：远程页面（DeepSeek Harness）的 Cookie / localStorage / sessionStorage
   由系统 WebView 原生管理并持久化（Windows WebView2、Android WebView、iOS WKWebView），
   与普通浏览器行为一致：不同地址（源）的存储相互独立，重启 App 后保留，与系统浏览器数据隔离。
+- **页面实例缓存**：48 小时内重复进入同一地址不重新加载（页面实例池保留隐藏 iframe，
+  SPA 状态/滚动位置不丢）；超过 48 小时或点强制刷新才重新加载。
+- **Android 状态栏**：App 内容不侵占状态栏（CI 构建时自动配置 edge-to-edge opt-out）。
 
 ## 目录结构
 

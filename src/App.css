@@ -24,6 +24,10 @@ body,
   height: 100%;
 }
 
+.app-browser {
+  height: 100%;
+}
+
 body {
   overflow: hidden;
 }
