@@ -43,8 +43,8 @@ npm run tauri dev  # 启动桌面开发模式（本机已具备 Rust + MSVC + We
 
 DeepSeek Harness 通常部署在局域网、以 `http://192.168.1.1:3080` 明文访问，而移动系统默认禁止：
 
-- **Android**：CI 构建时自动设置 `android:usesCleartextTraffic="true"`
-  （见 workflow 的 "Allow cleartext HTTP for LAN addresses" 步骤）。
+- **Android**：使用 `--debug` 构建，Tauri Android 模板的 debug 构建自动放行明文流量
+  （`usesCleartextTraffic=true`），无需额外配置。
 - **iOS**：CI 构建时自动注入 `NSAppTransportSecurity > NSAllowsArbitraryLoads` 豁免
   （见 workflow 的 "Allow cleartext HTTP (ATS) for LAN addresses" 步骤）。
 
@@ -53,25 +53,30 @@ DeepSeek Harness 通常部署在局域网、以 `http://192.168.1.1:3080` 明文
 推送到 GitHub 后：
 
 1. **手动触发**：仓库 Actions 页面 → `mobile-build` → Run workflow，可选 `both / android / ios`；
-2. **打 tag 自动触发**：`git tag v0.1.0 && git push origin v0.1.0`，同时构建 Android 和 iOS，并由
-   [tauri-action](https://github.com/tauri-apps/tauri-action) 发布到 GitHub Release（`app-v0.1.0`）。
+2. **打 tag 自动触发**：`git tag v0.1.0 && git push origin v0.1.0`，同时构建 Android 和 iOS；
+   Android 产物由 workflow 自动发布到 GitHub Release，iOS 产物在 Actions artifacts 中下载。
 
 Android 工程与 iOS 工程（`gen/apple`）均在 CI 内自动生成（iOS 需要 macOS runner 执行
 `tauri ios init`），无需在本地生成或提交。
+
+> 说明：tauri-action 的移动端支持从未发布（仅 dev 分支），因此 workflow 直接调用
+> `tauri` CLI 构建（`android build --debug --apk --aab` / `ios build`）。
 
 ### 需要配置的 Secrets（仓库 Settings → Secrets and variables → Actions）
 
 | Secret | 必填 | 说明 |
 |---|---|---|
-| `GITHUB_TOKEN` | ✅（自动存在） | tauri-action 发布 Release 用，无需手动配置 |
-| `ANDROID_KEYSTORE_PATH` / `ANDROID_KEYSTORE_PASSWORD` / `ANDROID_KEY_ALIAS` / `ANDROID_KEY_PASSWORD` | 可选 | Android 正式签名（keystore 文件以 base64 存入 Secret 或放进仓库）；不配则出 debug 签名包 |
-| `APPLE_CERTIFICATE` / `APPLE_CERTIFICATE_PASSWORD` / `APPLE_SIGNING_IDENTITY` / `APPLE_ID` / `APPLE_PASSWORD` / `APPLE_TEAM_ID` | 可选 | iOS 正式签名，需要 Apple Developer Program 付费账号；不配则出未签名包 |
+| `GITHUB_TOKEN` | ✅（自动存在） | 发布 GitHub Release 用，无需手动配置 |
+| `APPLE_CERTIFICATE` / `APPLE_CERTIFICATE_PASSWORD` / `APPLE_SIGNING_IDENTITY` / `APPLE_ID` / `APPLE_PASSWORD` / `APPLE_TEAM_ID` | iOS 真机包必填 | iOS 签名，需要 Apple Developer Program 付费账号；**不配则 iOS 构建失败**（预期行为） |
+
+> Android 当前输出 **debug 签名包**（`--debug` 构建，可直接安装测试）；
+> 未来需要正式签名时再在 Android job 中配置 keystore 签名。
 
 ### iOS 注意事项
 
 - iOS 的 Xcode 工程（`src-tauri/gen/apple`）只能由 **macOS** 生成，CI 的 macos-14 runner 会自动执行
   `tauri ios init` 完成，Windows 本机无法交叉编译 iOS。
-- 免费 Apple 账号无法在 CI 上长期签名分发；未配置签名 Secrets 时产出未签名包（仅测试用）。
+- 免费 Apple 账号无法在 CI 上长期签名分发；未配置签名 Secrets 时真机构建会失败。
 
 ## 应用标识
 

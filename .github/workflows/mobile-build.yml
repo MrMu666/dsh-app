@@ -4,11 +4,11 @@
 #   1. 手动触发：Actions 页面 → mobile-build → Run workflow，可选 android / ios / both
 #   2. 推送 tag：git tag v0.1.0 && git push origin v0.1.0  → 同时出 Android + iOS 包
 #
-# Android 产物：APK + AAB（debug 签名；正式签名见下方注释）
-# iOS 产物：IPA（未配置 Apple Secrets 时为未签名包，仅用于测试）
+# Android 产物：debug 签名 APK + AAB（可直接安装测试）
+# iOS 产物：IPA（未配置 Apple Secrets 时真机构建会因缺少签名证书失败，见 iOS job 注释）
 #
-# ⚠️ iOS 工程（src-tauri/gen/apple）由 CI 在本 job 内自动执行 `tauri ios init` 生成，
-#    无需在 Mac 上手动生成并提交（Windows 上也生不成）。
+# 注意：tauri-action 的移动端支持（mobile input）仅存在于 dev 分支、从未发布，
+#       @v0 最新发布版（v0.6.2）不支持 Android/iOS，因此这里直接调用 tauri CLI 构建。
 
 name: mobile-build
 
@@ -28,7 +28,7 @@ on:
       - "v*"
 
 permissions:
-  contents: write # 允许 tauri-action 创建 GitHub Release 并上传产物
+  contents: write # 允许创建 GitHub Release 并上传产物
 
 jobs:
   android:
@@ -65,25 +65,11 @@ jobs:
       - name: Init Android project
         run: npm run tauri -- android init
 
-      # 内网 DeepSeek Harness 地址是明文 HTTP（如 192.168.1.1:3080），
-      # Android 9+ 默认禁止明文流量，需要在 application 标签上开启
-      - name: Allow cleartext HTTP for LAN addresses
-        run: sed -i 's|<application|<application android:usesCleartextTraffic="true"|' src-tauri/gen/android/app/src/main/AndroidManifest.xml
-
-      - name: Build Android (APK/AAB)
-        uses: tauri-apps/tauri-action@v0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          projectPath: src-tauri
-          tagName: app-v__VERSION__
-          releaseName: "App v__VERSION__"
-          args: android build --apk --aab
-          # 正式签名（可选）：把 keystore 文件及密码放入仓库 Secrets 后取消注释
-          # keystorePath: ${{ secrets.ANDROID_KEYSTORE_PATH }}
-          # keystorePassword: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          # keyAlias: ${{ secrets.ANDROID_KEY_ALIAS }}
-          # keyPassword: ${{ secrets.ANDROID_KEY_PASSWORD }}
+      # debug 构建：debug 签名（可直接安装测试）+ 模板自动放行明文 HTTP
+      # （Tauri Android 模板的 debug buildType 设置 usesCleartextTraffic=true，
+      #  内网 DeepSeek Harness 地址如 http://192.168.1.1:3080 可正常访问）
+      - name: Build Android APK/AAB
+        run: npm run tauri -- android build --debug --apk --aab
 
       - name: Upload APK/AAB artifacts
         uses: actions/upload-artifact@v4
@@ -93,6 +79,16 @@ jobs:
             src-tauri/gen/android/app/build/outputs/apk/**/*.apk
             src-tauri/gen/android/app/build/outputs/bundle/**/*.aab
           if-no-files-found: warn
+
+      # 打 tag 时自动发布 GitHub Release（Android 产物；iOS 产物在 Actions artifacts 中下载）
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: App ${{ github.ref_name }}
+          files: |
+            src-tauri/gen/android/app/build/outputs/apk/**/*.apk
+            src-tauri/gen/android/app/build/outputs/bundle/**/*.aab
 
   ios:
     name: iOS (IPA)
@@ -128,23 +124,17 @@ jobs:
           /usr/libexec/PlistBuddy -c "Add :NSAppTransportSecurity dict" "$PLIST"
           /usr/libexec/PlistBuddy -c "Add :NSAppTransportSecurity:NSAllowsArbitraryLoads bool true" "$PLIST"
 
+      # 出可安装的 IPA 需要签名 Secrets（APPLE_CERTIFICATE 等，需 Apple Developer 付费账号）；
+      # 未配置时真机构建会因缺少签名证书失败，属预期行为
       - name: Build iOS (IPA)
-        uses: tauri-apps/tauri-action@v0
+        run: npm run tauri -- ios build
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # 正式签名需要 Apple Developer Program 付费账号（$99/年）
-          # 免费账号无法在 CI 上长期签名分发
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        with:
-          projectPath: src-tauri
-          tagName: app-v__VERSION__
-          releaseName: "App v__VERSION__"
-          args: ios build
 
       - name: Upload IPA artifacts
         uses: actions/upload-artifact@v4
