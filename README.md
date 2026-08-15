@@ -1,5 +1,9 @@
 # dsh-app
 
+> ## ⭐ 搭配 [dsh-LAN](https://github.com/MrMu666/dsh-LAN) 体验最佳
+>
+> 本项目与 **dsh-LAN** 结合使用可获得最佳体验，建议搭配部署使用。
+
 DeepSeek Harness 客户端：在 App 内打开局域网内指定地址的 DeepSeek Harness 页面。
 
 基于 **Tauri 2 + React 19 + TypeScript + Vite**。
