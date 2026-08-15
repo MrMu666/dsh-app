@@ -73,11 +73,35 @@ jobs:
       - name: Init Android project
         run: npm run tauri -- android init
 
-      # debug 构建：debug 签名（可直接安装测试）+ 模板自动放行明文 HTTP
-      # （Tauri Android 模板的 debug buildType 设置 usesCleartextTraffic=true，
-      #  内网 DeepSeek Harness 地址如 http://192.168.1.1:3080 可正常访问）
-      - name: Build Android APK/AAB
-        run: npm run tauri -- android build --debug --apk --aab
+      # 内网 DeepSeek Harness 地址是明文 HTTP（如 192.168.1.1:3080），
+      # 模板默认 release 禁明文流量，直接把 Manifest 占位符替换为 true（debug/release 均生效）
+      - name: Allow cleartext HTTP for LAN addresses
+        run: sed -i 's|android:usesCleartextTraffic="${usesCleartextTraffic}"|android:usesCleartextTraffic="true"|' src-tauri/gen/android/app/src/main/AndroidManifest.xml
+
+      # 配置了签名 Secrets（ANDROID_KEYSTORE_BASE64 等）时：注入 release 签名并构建
+      # 正式签名 release 包（APK/AAB，--split-per-abi 按 CPU 架构拆包，单包更小）；
+      # 未配置时回退 debug 构建（debug 签名可安装，但体积大，仅测试用）
+      - name: Build Android (APK/AAB)
+        run: |
+          if [ -n "${ANDROID_KEYSTORE_BASE64:-}" ]; then
+            echo "${ANDROID_KEYSTORE_BASE64}" | base64 -d > "$GITHUB_WORKSPACE/src-tauri/gen/android/upload-keystore.jks"
+            cat > src-tauri/gen/android/keystore.properties <<EOF
+          storePassword=${ANDROID_KEYSTORE_PASSWORD}
+          keyPassword=${ANDROID_KEY_PASSWORD}
+          keyAlias=${ANDROID_KEY_ALIAS}
+          storeFile=${GITHUB_WORKSPACE}/src-tauri/gen/android/upload-keystore.jks
+          EOF
+            python3 .github/scripts/inject-android-signing.py
+            npm run tauri -- android build --apk --aab --split-per-abi
+          else
+            echo "::warning::未配置签名 Secrets（ANDROID_KEYSTORE_*），回退构建 debug 包（体积大，仅测试用）"
+            npm run tauri -- android build --debug --apk
+          fi
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
 
       - name: Upload APK/AAB artifacts
         uses: actions/upload-artifact@v4

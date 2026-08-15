@@ -72,10 +72,14 @@ Android 工程与 iOS 工程（`gen/apple`）均在 CI 内自动生成（iOS 需
 | Secret | 必填 | 说明 |
 |---|---|---|
 | `GITHUB_TOKEN` | ✅（自动存在） | 发布 GitHub Release 用，无需手动配置 |
+| `ANDROID_KEYSTORE_BASE64` | Android 正式包必填 | keystore 文件的 base64（`certutil -encode` / `base64` 生成）；配置后构建**正式签名 release 包**（按 ABI 拆分，单包 20–35MB） |
+| `ANDROID_KEYSTORE_PASSWORD` / `ANDROID_KEY_PASSWORD` | 同上 | keystore 与密钥密码（建议只用字母数字） |
+| `ANDROID_KEY_ALIAS` | 同上 | 密钥别名（如 `upload`） |
 | `APPLE_CERTIFICATE` / `APPLE_CERTIFICATE_PASSWORD` / `APPLE_SIGNING_IDENTITY` / `APPLE_ID` / `APPLE_PASSWORD` / `APPLE_TEAM_ID` | iOS 真机包必填 | iOS 签名，需要 Apple Developer Program 付费账号；**不配则 iOS 构建失败**（预期行为） |
 
-> Android 当前输出 **debug 签名包**（`--debug` 构建，可直接安装测试）；
-> 未来需要正式签名时再在 Android job 中配置 keystore 签名。
+> Android 未配置签名 Secrets 时，回退构建 debug 签名包（可安装测试，但体积大，约 400MB）；
+> 配置后构建正式签名 release 包（APK/AAB，`--split-per-abi` 按架构拆分，单包约 20–35MB）。
+> keystore 生成命令：`keytool -genkey -v -keystore upload-keystore.jks -storetype JKS -keyalg RSA -keysize 2048 -validity 10000 -alias upload`（JDK 自带 keytool）。
 
 ### iOS 注意事项
 
