@@ -43,7 +43,7 @@ jobs:
     name: Android (APK/AAB)
     runs-on: ubuntu-latest
     # 手动触发时按输入过滤；tag 触发时两个 job 都跑
-    if: github.event_name == 'push' || inputs.platform != 'ios'
+    if: github.event_name == 'push' || github.event.inputs.platform != 'ios'
     steps:
       - uses: actions/checkout@v4
 
@@ -72,6 +72,11 @@ jobs:
 
       - name: Init Android project
         run: npm run tauri -- android init
+
+      # tauri android init 生成的工程使用 CLI 模板内置的默认图标；
+      # 用项目图标（src-tauri/icons/android，由 `tauri icon` 生成）覆盖默认图标
+      - name: Apply app icons to Android project
+        run: cp -r src-tauri/icons/android/. src-tauri/gen/android/app/src/main/res/
 
       # 内网 DeepSeek Harness 地址是明文 HTTP（如 192.168.1.1:3080），
       # 模板默认 release 禁明文流量，直接把 Manifest 占位符替换为 true（debug/release 均生效）
@@ -119,13 +124,14 @@ jobs:
 
       # 发布 GitHub Release（Android 产物；iOS 产物在 Actions artifacts 中下载）
       # - tag 触发（v*）：始终发布，tag 用 tag 名
-      # - 手动触发：默认发布（可取消勾选），tag 用输入值或自动生成 manual-<run_number>
+      # - 手动触发：默认发布（仅当显式取消勾选 publish_release 才跳过），
+      #   tag 用输入 release_tag 或自动生成 manual-<run_number>
       - name: Publish GitHub Release
-        if: github.event_name == 'push' || inputs.publish_release == 'true'
+        if: github.event_name == 'push' || github.event.inputs.publish_release != 'false'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.event_name == 'push' && github.ref_name || (inputs.release_tag != '' && inputs.release_tag || format('manual-{0}', github.run_number)) }}
-          name: App ${{ github.event_name == 'push' && github.ref_name || (inputs.release_tag != '' && inputs.release_tag || format('manual-{0}', github.run_number)) }}
+          tag_name: ${{ github.event_name == 'push' && github.ref_name || (github.event.inputs.release_tag != '' && github.event.inputs.release_tag || format('manual-{0}', github.run_number)) }}
+          name: App ${{ github.event_name == 'push' && github.ref_name || (github.event.inputs.release_tag != '' && github.event.inputs.release_tag || format('manual-{0}', github.run_number)) }}
           files: |
             src-tauri/gen/android/app/build/outputs/apk/**/*.apk
             src-tauri/gen/android/app/build/outputs/bundle/**/*.aab
@@ -133,7 +139,7 @@ jobs:
   ios:
     name: iOS (IPA)
     runs-on: macos-14 # 自带 Xcode，Tauri 的 iOS 构建只能在 macOS 上进行
-    if: github.event_name == 'push' || inputs.platform != 'android'
+    if: github.event_name == 'push' || github.event.inputs.platform != 'android'
     steps:
       - uses: actions/checkout@v4
 
