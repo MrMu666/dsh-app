@@ -23,6 +23,14 @@ on:
           - android
           - ios
         default: both
+      publish_release:
+        description: "构建完成后是否发布 GitHub Release（手动触发时有效；tag 触发始终发布）"
+        type: boolean
+        default: true
+      release_tag:
+        description: "手动发布时使用的 tag（留空自动生成 manual-<序号>）"
+        type: string
+        default: ""
   push:
     tags:
       - "v*"
@@ -80,12 +88,15 @@ jobs:
             src-tauri/gen/android/app/build/outputs/bundle/**/*.aab
           if-no-files-found: warn
 
-      # 打 tag 时自动发布 GitHub Release（Android 产物；iOS 产物在 Actions artifacts 中下载）
+      # 发布 GitHub Release（Android 产物；iOS 产物在 Actions artifacts 中下载）
+      # - tag 触发（v*）：始终发布，tag 用 tag 名
+      # - 手动触发：默认发布（可取消勾选），tag 用输入值或自动生成 manual-<run_number>
       - name: Publish GitHub Release
-        if: startsWith(github.ref, 'refs/tags/')
+        if: github.event_name == 'push' || inputs.publish_release == 'true'
         uses: softprops/action-gh-release@v2
         with:
-          name: App ${{ github.ref_name }}
+          tag_name: ${{ github.event_name == 'push' && github.ref_name || (inputs.release_tag != '' && inputs.release_tag || format('manual-{0}', github.run_number)) }}
+          name: App ${{ github.event_name == 'push' && github.ref_name || (inputs.release_tag != '' && inputs.release_tag || format('manual-{0}', github.run_number)) }}
           files: |
             src-tauri/gen/android/app/build/outputs/apk/**/*.apk
             src-tauri/gen/android/app/build/outputs/bundle/**/*.aab

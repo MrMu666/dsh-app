@@ -57,8 +57,9 @@ DeepSeek Harness 通常部署在局域网、以 `http://192.168.1.1:3080` 明文
 推送到 GitHub 后：
 
 1. **手动触发**：仓库 Actions 页面 → `mobile-build` → Run workflow，可选 `both / android / ios`；
+   构建完成后**默认自动发布 GitHub Release**（可取消勾选 `publish_release`，也可自定义 `release_tag`）；
 2. **打 tag 自动触发**：`git tag v0.1.0 && git push origin v0.1.0`，同时构建 Android 和 iOS；
-   Android 产物由 workflow 自动发布到 GitHub Release，iOS 产物在 Actions artifacts 中下载。
+   Android 产物自动发布到 GitHub Release，iOS 产物在 Actions artifacts 中下载。
 
 Android 工程与 iOS 工程（`gen/apple`）均在 CI 内自动生成（iOS 需要 macOS runner 执行
 `tauri ios init`），无需在本地生成或提交。
