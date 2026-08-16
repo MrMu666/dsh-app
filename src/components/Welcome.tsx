@@ -66,6 +66,10 @@ function Welcome({ addresses, onEnter }: WelcomeProps) {
         </form>
 
         {error && <p className="address-error">{error}</p>}
+
+        <p className="welcome-note">
+          除非点击右上角刷新按钮主动刷新，否则页面不会自动重载。
+        </p>
       </div>
     </div>
   );

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import Welcome from "./components/Welcome";
 import BrowserView from "./components/BrowserView";
 import { loadAddresses, saveAddresses } from "./lib/addresses";
-import { MAX_POOL_SIZE, POOL_TTL_MS, type PoolEntry } from "./lib/pool";
+import { MAX_POOL_SIZE, type PoolEntry } from "./lib/pool";
 import "./App.css";
 
 /** 浏览模式状态：当前地址 + 浏览历史（用于顶栏返回） */
@@ -18,18 +18,15 @@ function App() {
   const [pool, setPool] = useState<Record<string, PoolEntry>>({});
 
   // 维护页面实例池：进入某地址时，
-  // - 池中已有且未过期（48 小时内）→ 复用，仅更新访问时间（不重新加载）
-  // - 池中没有或已过期 → 重建（gen 变化 → iframe 重新加载）
-  // - 顺带清理过期条目，并控制池容量上限
+  // - 池中已有 → 永久复用，仅更新访问时间（不重新加载）
+  // - 池中没有 → 新建（gen = 1 → iframe 加载）
+  // - 控制池容量上限（超出时移除最久未用的）
   useEffect(() => {
     if (!browser) return;
     const addr = browser.current;
     setPool((prev) => {
       const now = Date.now();
-      const next: Record<string, PoolEntry> = {};
-      for (const [a, e] of Object.entries(prev)) {
-        if (now - e.lastUsed <= POOL_TTL_MS) next[a] = e;
-      }
+      const next: Record<string, PoolEntry> = { ...prev };
       const existing = next[addr];
       if (existing) {
         next[addr] = { lastUsed: now, gen: existing.gen };

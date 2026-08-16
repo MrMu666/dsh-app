@@ -109,6 +109,13 @@
   text-align: center;
 }
 
+.welcome-note {
+  font-size: 13px;
+  color: #dc2626;
+  text-align: center;
+  line-height: 1.5;
+}
+
 @media (prefers-color-scheme: dark) {
   .welcome-title {
     color: #f6f6f6;
