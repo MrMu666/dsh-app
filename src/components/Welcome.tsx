@@ -68,7 +68,7 @@ function Welcome({ addresses, onEnter }: WelcomeProps) {
         {error && <p className="address-error">{error}</p>}
 
         <p className="welcome-note">
-          除非点击右上角刷新按钮主动刷新，否则页面不会自动重载。
+          考虑到页面刷新重新加载对话会消耗较多流量，除非点击右上角刷新按钮主动刷新，否则页面不会自动重载。
         </p>
       </div>
     </div>
