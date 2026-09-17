@@ -57,9 +57,11 @@ DeepSeek Harness 客户端：在 App 内打开局域网内指定地址的 DeepSe
 
 安卓上每个 Activity 只有一个 WebView，远程 DeepSeek Harness 页面又**不能**放进 iframe
 （第三方上下文会让登录 Cookie 被丢弃、局域网口令页反复闪烁），所以「页面顶部的功能栏」
-只能由**原生 Android View** 叠在 WebView 上方：
+只能由**原生 Android View** 实现：
 
-- 按钮：`←` 返回地址中枢、`⟳` 刷新、点中间的地址可下拉切换历史地址；
+- 外观沿用旧版顶栏：浅灰底 + **居中**的地址胶囊 + 底部分隔线；左侧 `←` 返回地址中枢，
+  右侧 `⟳` 刷新，点地址可下拉切换历史地址；深色模式跟随系统；
+- **占位式布局**：页面从工具条下沿开始渲染、高度自动让出，顶部内容不会被遮挡；
 - 系统返回键在浏览页面时同样回到地址中枢（不会直接退出 App）；
 - 工具条与页面都避让状态栏（构建时已配置 edge-to-edge opt-out，工具条自身也按 insets 兜底）；
 - 实现文件是 `.github/android/MainActivity.kt`，由 CI 在 `tauri android init` 之后覆盖模板生成的那份；

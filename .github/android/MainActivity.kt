@@ -1,10 +1,18 @@
-// dsh-app 安卓原生顶部工具条（返回中枢 / 刷新 / 当前地址 + 切换地址）。
+// dsh-app 安卓原生顶部工具条（返回地址中枢 / 当前地址 + 切换 / 刷新）。
 //
 // 为什么必须用原生 View：安卓上 Tauri/wry 每个 Activity 只有一个 WebView
 // （wry 的 Activity 代理里只有一个 webview 槽位），而远程 DSH 页面又必须作为
 // 顶层文档承载（iframe 是第三方上下文，会话 Cookie 会被丢弃 → 口令页闪烁，
-// 见仓库 AGENTS.md 第 3 节）。所以「页面顶部的功能栏」只能由原生 View 叠在
-// WebView 上方，没有纯前端方案。
+// 见仓库 AGENTS.md 第 3 节）。所以「页面顶部的功能栏」只能由原生 View 实现，
+// 没有纯前端方案。
+//
+// 布局：工具条**占位**在 WebView 上方（不是盖在上面）——WebView 用顶部 margin
+// 让出「状态栏 + 工具条」的高度，所以页面是从工具条下沿开始渲染的，主页面高度
+// 自动变小，顶部内容不会被遮挡。
+//
+// 外观：对齐旧版 iframe 顶栏（BrowserView，已删除，见 git 历史）：浅灰底
+// (#F3F4F6) + 白色圆角地址胶囊 + 1dp 底部分隔线 (#E5E7EB) + 左右 40dp 图标按钮；
+// 地址文字居中；深色模式跟随系统（#1F2937 / #374151 / #111827，与旧版一致）。
 //
 // 注入方式：CI（.github/workflows/build-android.yml）在 `tauri android init`
 // 之后用本文件覆盖模板生成的 MainActivity.kt，并把 __PACKAGE__ 替换为
@@ -19,7 +27,9 @@
 
 package __PACKAGE__
 
+import android.content.res.Configuration
 import android.graphics.drawable.Drawable
+import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.text.TextUtils
 import android.view.Gravity
@@ -37,16 +47,12 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import org.json.JSONArray
 
-/** 工具条背景色（深色，配合浅色状态栏图标） */
-private const val BAR_COLOR = 0xFF1F2430.toInt()
-
-/** 工具条文字色 */
-private const val BAR_TEXT_COLOR = 0xFFE8EAED.toInt()
-
 // 注意：`TauriActivity`（以及 wry 的 `WryActivity`）由 CLI 生成在**本 App 的包**里
 // （tauri 的 build.rs 用 WRY_ANDROID_PACKAGE 替换模板里的 {{package}}），所以这里
 // **不要**写 `import app.tauri.TauriActivity` —— `app.tauri` 只放插件类（AppPlugin 等）。
 class MainActivity : TauriActivity() {
+  private var topBar: NativeTopBar? = null
+
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
   }
@@ -55,13 +61,24 @@ class MainActivity : TauriActivity() {
     super.onWebViewCreate(webView)
     // onWebViewCreate 由 WryActivity.setWebView() 触发，而 Tauri 随后才调用
     // setContentView(webView)：所以排到下一个主线程任务再挂工具条，那时 WebView
-    // 已经是内容视图，工具条可以作为它的兄弟 View 叠在上方。
-    webView.post { NativeTopBar(this@MainActivity, webView).install() }
+    // 已经是内容视图，工具条可以作为它的兄弟 View 占据上方空间。
+    webView.post {
+      val bar = NativeTopBar(this@MainActivity, webView)
+      topBar = bar
+      bar.install()
+    }
+  }
+
+  /** 深色/浅色切换后同步工具条配色（前提是 Activity 没有因该配置被重建） */
+  override fun onConfigurationChanged(newConfig: Configuration) {
+    super.onConfigurationChanged(newConfig)
+    topBar?.refreshTheme()
   }
 }
 
 /**
- * 顶部工具条：叠在 WebView 之上，避让状态栏，并接住中枢页的 window.dshBar 调用。
+ * 顶部工具条：占据 WebView 上方的空间（WebView 用 margin 让位，不遮挡页面），
+ * 避让状态栏，并接住中枢页的 window.dshBar 调用。
  *
  * 这里刻意保持 public：`@JavascriptInterface` 方法由 WebView 通过反射调用，
  * 非 public 的类在部分 Android 版本上会因访问检查失败而静默失效。
@@ -72,13 +89,27 @@ class MainActivity : TauriActivity() {
 class NativeTopBar(private val activity: TauriActivity, private val webView: WebView) {
   private val density = activity.resources.displayMetrics.density
 
-  /** 工具条本体高度（不含状态栏避让部分） */
-  private val rowHeight = (44 * density).toInt()
+  /** 图标按钮尺寸（与旧版 iframe 顶栏的 40px 按钮一致） */
+  private val controlSize = (40 * density).toInt()
 
+  /** 工具条内边距（旧版为 8px） */
+  private val barPad = (8 * density).toInt()
+
+  /** 底部分隔线高度（旧版 border-bottom: 1px） */
+  private val dividerHeight = density.toInt().coerceAtLeast(1)
+
+  /** 工具条总高（不含状态栏避让部分） */
+  private val barHeight = controlSize + barPad * 2 + dividerHeight
+
+  /** 垂直线性布局：内容行 + 底部分隔线 */
   private val bar = LinearLayout(activity)
+
+  /** 水平内容行：返回 / 地址 / 刷新 */
+  private val barRow = LinearLayout(activity)
+  private val divider = View(activity)
   private val barParams = FrameLayout.LayoutParams(
     ViewGroup.LayoutParams.MATCH_PARENT,
-    rowHeight,
+    barHeight,
     Gravity.TOP,
   )
   private val homeButton = TextView(activity)
@@ -97,28 +128,43 @@ class NativeTopBar(private val activity: TauriActivity, private val webView: Web
   fun install() {
     val content = activity.findViewById<ViewGroup>(android.R.id.content) ?: return
 
-    bar.orientation = LinearLayout.HORIZONTAL
-    bar.setBackgroundColor(BAR_COLOR)
+    bar.orientation = LinearLayout.VERTICAL
     bar.visibility = View.GONE
     bar.layoutParams = barParams
+
+    barRow.orientation = LinearLayout.HORIZONTAL
+    barRow.setPadding(barPad, barPad, barPad, barPad)
+    barRow.layoutParams = LinearLayout.LayoutParams(
+      ViewGroup.LayoutParams.MATCH_PARENT,
+      controlSize + barPad * 2,
+    )
 
     styleButton(homeButton, "←", "返回地址中枢") { goHome() }
     styleButton(refreshButton, "⟳", "刷新") { webView.reload() }
     titleView.apply {
-      setTextColor(BAR_TEXT_COLOR)
-      textSize = 15f
-      gravity = Gravity.CENTER_VERTICAL
+      textSize = 14f
+      gravity = Gravity.CENTER
       maxLines = 1
       ellipsize = TextUtils.TruncateAt.END
-      setPadding((12 * density).toInt(), 0, (12 * density).toInt(), 0)
-      background = selectableBackground()
       setOnClickListener { showAddressMenu() }
     }
 
-    bar.addView(homeButton, LinearLayout.LayoutParams(rowHeight, rowHeight))
-    bar.addView(titleView, LinearLayout.LayoutParams(0, rowHeight, 1f))
-    bar.addView(refreshButton, LinearLayout.LayoutParams(rowHeight, rowHeight))
+    // 地址胶囊居中：左右用等宽的图标按钮夹住，中间权重占满
+    barRow.addView(homeButton, LinearLayout.LayoutParams(controlSize, controlSize))
+    barRow.addView(
+      titleView,
+      LinearLayout.LayoutParams(0, controlSize, 1f).apply {
+        marginStart = barPad
+        marginEnd = barPad
+      },
+    )
+    barRow.addView(refreshButton, LinearLayout.LayoutParams(controlSize, controlSize))
+
+    bar.addView(barRow)
+    bar.addView(divider, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dividerHeight))
     content.addView(bar)
+
+    applyTheme()
 
     // 状态栏避让：insets 为 0（主题已 opt-out edge-to-edge）时什么都不做；
     // 被强制 edge-to-edge 时把状态栏高度让给工具条，页面整体下移。
@@ -148,32 +194,83 @@ class NativeTopBar(private val activity: TauriActivity, private val webView: Web
     )
   }
 
+  /** 深色/浅色切换时刷新配色（由 MainActivity.onConfigurationChanged 调用） */
+  fun refreshTheme() {
+    applyTheme()
+    if (visible) applyStatusBarIcons(force = true)
+  }
+
+  private fun nightMode(): Boolean {
+    val mode = activity.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK
+    return mode == Configuration.UI_MODE_NIGHT_YES
+  }
+
+  /** 配色对齐旧版 iframe 顶栏；深色模式跟随系统 */
+  private fun applyTheme() {
+    val night = nightMode()
+    val barColor = if (night) 0xFF1F2937.toInt() else 0xFFF3F4F6.toInt()
+    val lineColor = if (night) 0xFF374151.toInt() else 0xFFE5E7EB.toInt()
+    val textColor = if (night) 0xFFF6F6F6.toInt() else 0xFF111827.toInt()
+    val pillColor = if (night) 0xFF111827.toInt() else 0xFFFFFFFF.toInt()
+
+    bar.setBackgroundColor(barColor)
+    divider.setBackgroundColor(lineColor)
+    homeButton.setTextColor(textColor)
+    refreshButton.setTextColor(textColor)
+    titleView.setTextColor(textColor)
+    titleView.background = pillBackground(pillColor, lineColor)
+  }
+
+  /** 地址胶囊：白色圆角 + 1px 描边（对应旧版的 .bar-address） */
+  private fun pillBackground(fill: Int, stroke: Int): Drawable =
+    GradientDrawable().apply {
+      shape = GradientDrawable.RECTANGLE
+      cornerRadius = 8 * density
+      setColor(fill)
+      setStroke(dividerHeight, stroke)
+    }
+
   /** 状态栏避让：工具条自身顶到屏幕顶端，内容放在状态栏下方；WebView 让出对应高度 */
   private fun applyStatusInset(top: Int) {
     if (top == statusInset) return
     statusInset = top
     bar.setPadding(0, top, 0, 0)
-    barParams.height = rowHeight + top
+    barParams.height = barHeight + top
     bar.layoutParams = barParams
-    applyWebViewInset()
-    if (visible) applyStatusBarIcons(darkBar = true)
+    applyWebViewLayout()
+    if (visible) applyStatusBarIcons(force = true)
   }
 
-  /** WebView 顶部让出的高度 = 状态栏（工具条可见时再加工具条本体高度） */
-  private fun applyWebViewInset() {
-    val top = statusInset + if (visible) rowHeight else 0
-    if (webView.paddingTop != top) webView.setPadding(0, top, 0, 0)
+  /**
+   * 主页面整体下移：给 WebView 设顶部 margin =「状态栏 + 工具条」，
+   * 于是页面高度自动缩小、从工具条下沿开始渲染 —— 不是盖在页面上。
+   */
+  private fun applyWebViewLayout() {
+    val offset = statusInset + if (visible) barHeight else 0
+    val current = webView.layoutParams
+    if (
+      current is FrameLayout.LayoutParams &&
+      current.topMargin == offset &&
+      current.height == ViewGroup.LayoutParams.MATCH_PARENT
+    ) {
+      return
+    }
+    webView.layoutParams = FrameLayout.LayoutParams(
+      ViewGroup.LayoutParams.MATCH_PARENT,
+      ViewGroup.LayoutParams.MATCH_PARENT,
+    ).apply { topMargin = offset }
   }
 
-  /** 工具条是深色的：只有当它真的伸进状态栏区域时才把状态栏图标切成浅色 */
-  private fun applyStatusBarIcons(darkBar: Boolean) {
+  /** 工具条伸进状态栏区域时，按工具条明暗切换状态栏图标颜色 */
+  private fun applyStatusBarIcons(force: Boolean) {
     val controller = WindowInsetsControllerCompat(activity.window, bar)
-    if (darkBar && statusInset > 0) {
+    if (force && statusInset > 0) {
       if (!forcedStatusBarIcons) {
         originalLightStatusBar = controller.isAppearanceLightStatusBars
         forcedStatusBarIcons = true
       }
-      controller.isAppearanceLightStatusBars = false
+      // 浅色工具条 → 深色图标；深色工具条 → 浅色图标
+      controller.isAppearanceLightStatusBars = !nightMode()
     } else if (forcedStatusBarIcons) {
       controller.isAppearanceLightStatusBars = originalLightStatusBar
       forcedStatusBarIcons = false
@@ -184,16 +281,17 @@ class NativeTopBar(private val activity: TauriActivity, private val webView: Web
     titleView.text = if (addresses.size > 1) "$label  ▾" else label
     visible = true
     bar.visibility = View.VISIBLE
-    applyWebViewInset()
-    applyStatusBarIcons(darkBar = true)
+    applyTheme()
+    applyWebViewLayout()
+    applyStatusBarIcons(force = true)
   }
 
   private fun hideBar() {
     if (!visible) return
     visible = false
     bar.visibility = View.GONE
-    applyWebViewInset()
-    applyStatusBarIcons(darkBar = false)
+    applyWebViewLayout()
+    applyStatusBarIcons(force = false)
   }
 
   /** 回到地址中枢：隐藏工具条并把 WebView 导航回中枢页 */
@@ -206,7 +304,7 @@ class NativeTopBar(private val activity: TauriActivity, private val webView: Web
     }
   }
 
-  /** 点地址文字：下拉列出中枢传来的历史地址，直接切换 */
+  /** 点地址：下拉列出中枢传来的历史地址，直接切换 */
   private fun showAddressMenu() {
     if (addresses.isEmpty()) return
     val menu = PopupMenu(activity, titleView)
@@ -235,7 +333,6 @@ class NativeTopBar(private val activity: TauriActivity, private val webView: Web
       this.text = glyph
       textSize = 20f
       gravity = Gravity.CENTER
-      setTextColor(BAR_TEXT_COLOR)
       contentDescription = description
       background = selectableBackground()
       setOnClickListener { onClick() }
