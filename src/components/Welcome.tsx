@@ -3,13 +3,17 @@ import { isValidAddress, normalizeAddress } from "../lib/addresses";
 import "./Welcome.css";
 
 interface WelcomeProps {
-  /** 输入过的地址列表（展示形式） */
+  /** 输入过的地址列表（展示形式，最近的在前） */
   addresses: string[];
-  /** 进入某个地址（浏览模式） */
+  /** 已经在本应用内打开的地址（用于标记「已打开」） */
+  opened: ReadonlySet<string>;
+  /** 进入某个地址（在新的顶层窗口打开；已打开则聚焦） */
   onEnter: (address: string) => void;
+  /** 从历史列表中移除某个地址 */
+  onRemove: (address: string) => void;
 }
 
-function Welcome({ addresses, onEnter }: WelcomeProps) {
+function Welcome({ addresses, opened, onEnter, onRemove }: WelcomeProps) {
   const [input, setInput] = useState("");
   const [error, setError] = useState<string | null>(null);
 
@@ -34,14 +38,26 @@ function Welcome({ addresses, onEnter }: WelcomeProps) {
         {addresses.length > 0 && (
           <div className="address-list">
             {addresses.map((addr) => (
-              <button
-                key={addr}
-                type="button"
-                className="address-btn"
-                onClick={() => onEnter(addr)}
-              >
-                {addr}
-              </button>
+              <div key={addr} className="address-item">
+                <button
+                  type="button"
+                  className="address-btn"
+                  onClick={() => onEnter(addr)}
+                  title={addr}
+                >
+                  <span className="address-text">{addr}</span>
+                  {opened.has(addr) && <span className="address-badge">已打开</span>}
+                </button>
+                <button
+                  type="button"
+                  className="address-remove"
+                  onClick={() => onRemove(addr)}
+                  title="从列表中移除"
+                  aria-label={`从列表中移除 ${addr}`}
+                >
+                  ×
+                </button>
+              </div>
             ))}
           </div>
         )}
@@ -61,14 +77,15 @@ function Welcome({ addresses, onEnter }: WelcomeProps) {
             spellCheck={false}
           />
           <button type="submit" className="address-go" disabled={!input.trim()}>
-            进入
+            打开
           </button>
         </form>
 
         {error && <p className="address-error">{error}</p>}
 
         <p className="welcome-note">
-          考虑到页面刷新重新加载对话会消耗较多流量，除非点击右上角刷新按钮主动刷新，否则页面不会自动重载。
+          每个地址在独立窗口中打开（Cookie 与登录状态各自独立、窗口存活期间不会自动重载）；
+          再次点击同一地址只切换到已打开的窗口，需要重新加载时关闭窗口再打开即可。
         </p>
       </div>
     </div>

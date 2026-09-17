@@ -1,108 +1,15 @@
-import { useCallback, useEffect, useState } from "react";
-import Welcome from "./components/Welcome";
-import BrowserView from "./components/BrowserView";
-import { loadAddresses, saveAddresses } from "./lib/addresses";
-import { MAX_POOL_SIZE, type PoolEntry } from "./lib/pool";
+import AddressHub from "./components/AddressHub";
 import "./App.css";
 
-/** 浏览模式状态：当前地址 + 浏览历史（用于顶栏返回） */
-interface BrowserState {
-  current: string;
-  history: string[];
-}
-
+/**
+ * 应用主窗口 = 地址中枢。
+ *
+ * DeepSeek Harness 页面不再嵌在本窗口的 iframe 里，而是由 AddressHub 通过
+ * `WebviewWindow` 在独立顶层窗口中打开：只有顶层文档才能让 DSH 的登录 Cookie
+ * 成为第一方（否则局域网口令页会因第三方 Cookie 被拦而反复闪烁）。
+ */
 function App() {
-  const [addresses, setAddresses] = useState<string[]>(() => loadAddresses());
-  const [browser, setBrowser] = useState<BrowserState | null>(null);
-  /** 页面实例池：地址 → 实例条目。池中地址的 iframe 常驻（隐藏保留），避免重新加载 */
-  const [pool, setPool] = useState<Record<string, PoolEntry>>({});
-
-  // 维护页面实例池：进入某地址时，
-  // - 池中已有 → 永久复用，仅更新访问时间（不重新加载）
-  // - 池中没有 → 新建（gen = 1 → iframe 加载）
-  // - 控制池容量上限（超出时移除最久未用的）
-  useEffect(() => {
-    if (!browser) return;
-    const addr = browser.current;
-    setPool((prev) => {
-      const now = Date.now();
-      const next: Record<string, PoolEntry> = { ...prev };
-      const existing = next[addr];
-      if (existing) {
-        next[addr] = { lastUsed: now, gen: existing.gen };
-      } else {
-        next[addr] = { lastUsed: now, gen: 1 };
-      }
-      const entries = Object.entries(next).sort((x, y) => x[1].lastUsed - y[1].lastUsed);
-      for (const [a] of entries.slice(0, Math.max(0, entries.length - MAX_POOL_SIZE))) {
-        delete next[a];
-      }
-      return next;
-    });
-  }, [browser?.current]);
-
-  /** 进入某个地址（欢迎页按钮 / 输入新地址）：记录到历史列表并进入浏览模式 */
-  const enterAddress = useCallback((display: string) => {
-    setAddresses((prev) => {
-      const next = [display, ...prev.filter((a) => a !== display)];
-      saveAddresses(next);
-      return next;
-    });
-    setBrowser({ current: display, history: [display] });
-  }, []);
-
-  /** 顶栏下拉切换到其他地址：压入浏览历史 */
-  const goToAddress = useCallback((display: string) => {
-    setBrowser((prev) => {
-      if (prev && prev.current === display) return prev;
-      const base = prev ? prev.history : [];
-      return { current: display, history: [...base, display] };
-    });
-  }, []);
-
-  /** 顶栏返回：有历史则退回上一个地址，否则回到欢迎页 */
-  const goBack = useCallback(() => {
-    setBrowser((prev) => {
-      if (!prev) return null;
-      if (prev.history.length > 1) {
-        return {
-          current: prev.history[prev.history.length - 2],
-          history: prev.history.slice(0, -1),
-        };
-      }
-      return null;
-    });
-  }, []);
-
-  /** 强制刷新当前页面：代次 +1，BrowserView 据此重建 iframe 重新加载 */
-  const refreshCurrent = useCallback(() => {
-    setBrowser((b) => {
-      if (!b) return b;
-      const addr = b.current;
-      setPool((prev) => ({
-        ...prev,
-        [addr]: { lastUsed: Date.now(), gen: (prev[addr]?.gen ?? 0) + 1 },
-      }));
-      return b;
-    });
-  }, []);
-
-  return (
-    <>
-      {!browser && <Welcome addresses={addresses} onEnter={enterAddress} />}
-      {/* BrowserView 始终挂载（欢迎页时隐藏），保证页面实例池中的 iframe 不被销毁 */}
-      <div className="app-browser" style={{ display: browser ? "block" : "none" }}>
-        <BrowserView
-          current={browser?.current ?? ""}
-          addresses={addresses}
-          pool={pool}
-          onBack={goBack}
-          onSelect={goToAddress}
-          onRefresh={refreshCurrent}
-        />
-      </div>
-    </>
-  );
+  return <AddressHub />;
 }
 
 export default App;

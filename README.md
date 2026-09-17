@@ -12,29 +12,36 @@ DeepSeek Harness 客户端：在 App 内打开局域网内指定地址的 DeepSe
 
 ## 功能
 
-- **欢迎页**：提示"请选择或输入您的 DeepSeek Harness 地址，如 192.168.1.1:3080"；
-  下方列出所有输入过的地址（按钮），列表下方输入框可添加新地址；无历史地址时不显示按钮区；
-  底部红字提示"考虑到页面刷新重新加载对话会消耗较多流量，除非点击右上角刷新按钮主动刷新，否则页面不会自动重载"。
-- **浏览页**：顶栏（左：返回按钮；中：地址下拉，默认当前地址，点击可切换任意历史地址；
-  右：强制刷新按钮）+ 页面内容。
-- **Cookie 与存储**：远程页面（DeepSeek Harness）的 Cookie / localStorage / sessionStorage
-  由系统 WebView 原生管理并持久化（Windows WebView2、Android WebView、iOS WKWebView），
-  与普通浏览器行为一致：不同地址（源）的存储相互独立，重启 App 后保留，与系统浏览器数据隔离。
-- **页面实例缓存**：页面实例永久保留（页面实例池保留隐藏 iframe，SPA 状态/滚动位置不丢），
-  不会因时间自动重载；只有点击顶栏右上角强制刷新按钮才会重新加载。
+- **地址中枢（主窗口）**：提示"请选择或输入您的 DeepSeek Harness 地址，如 192.168.1.1:3080"；
+  下方列出所有输入过的地址（按钮，可单个移除，已打开的地址带「已打开」标记），
+  列表下方输入框可添加新地址；无历史地址时不显示按钮区。
+- **每个地址一个独立顶层窗口**：点击地址在**新的顶层窗口**中打开该 DeepSeek Harness 页面
+  （同一地址再次点击只聚焦已打开的窗口，不重复打开、不重载页面）。
+- **桌面端不使用 iframe**：iframe 里页面属于「第三方上下文」，DSH 的登录状态会被
+  WebView 的跟踪防护拦截，dsh-LAN 的局域网口令页会反复闪烁、无法输入口令。
+  改用独立顶层窗口后，口令只需输入一次，行为与系统浏览器一致。
+- **Cookie 与存储**：每个地址窗口（源）独立，由系统 WebView 原生管理并持久化
+  （Windows WebView2、Android WebView、iOS WKWebView）：重启 App 后保留，与系统浏览器数据隔离。
+- **页面实例常驻**：窗口存活期间页面不会自动重载（SPA 状态/滚动位置不丢）；
+  需要重新加载时关闭该地址窗口再打开即可。
+- **Android（移动端）**：移动端不支持多窗口，点击地址会在**系统浏览器**中打开
+  （同样是顶层第一方上下文，口令行为与桌面浏览器一致）。
 - **Android 状态栏**：App 内容不侵占状态栏（CI 构建时自动配置 edge-to-edge opt-out）。
 
 ## 目录结构
 
 ```
 ├── src/                          # 前端（React）
-│   ├── lib/addresses.ts          # 地址规范化 + 地址历史持久化（localStorage）
+│   ├── lib/
+│   │   ├── addresses.ts          # 地址规范化 + 地址历史持久化（localStorage）
+│   │   └── windows.ts            # 顶层窗口打开/聚焦/枚举（Tauri WebviewWindow）
 │   ├── components/
-│   │   ├── Welcome.tsx           # 欢迎页：地址按钮列表 + 新地址输入
-│   │   └── BrowserView.tsx       # 浏览页：顶栏（返回/下拉/刷新）+ iframe
-│   └── App.tsx                   # 视图状态机（欢迎页 ⇄ 浏览页）+ 浏览历史
+│   │   ├── Welcome.tsx           # 地址中枢：地址按钮列表 + 新地址输入 + 移除
+│   │   └── AddressHub.tsx        # 中枢逻辑：打开窗口、跟踪已打开地址
+│   └── App.tsx                   # 主窗口 = 地址中枢
 ├── src-tauri/                    # Tauri 壳（Rust）
 │   ├── src/                      # Rust 代码
+│   ├── capabilities/default.json # 窗口能力（创建/显示/聚焦窗口所需权限）
 │   └── tauri.conf.json           # 应用配置（名称 / 标识符 / 窗口 / 图标）
 └── .github/
     ├── scripts/bump-version.mjs  # CI 版本递增（patch +1）
