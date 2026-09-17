@@ -1,0 +1,165 @@
+# Android 打包工作流：完全依赖 GitHub Actions，本地不做任何打包
+#
+# 触发方式：
+#   1. 推送 main / master：自动递增版本号 → 构建各架构签名 APK → 打 tag → 发布 GitHub Release
+#   2. 手动触发：Actions 页面 → build-android → Run workflow（同样递增版本并发布）
+#
+# 产物：按 CPU 架构拆分的 APK（--split-per-abi），文件名 dsh-app-<abi>-v<版本>.apk，
+#       直接从 Release 页下载单个 .apk 安装（Release 资产是原始文件，Artifact 会打包成 zip）。
+#
+# 注意：tauri-action 的移动端支持（mobile input）仅存在于 dev 分支、从未发布，
+#       @v0 最新发布版不支持 Android/iOS，因此这里直接调用 tauri CLI 构建。
+
+name: build-android
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+permissions:
+  contents: write # 允许 push 版本递增提交、打 tag、创建 GitHub Release
+
+jobs:
+  build-android:
+    name: Android (per-ABI APK)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Bump patch version
+        id: bump
+        run: |
+          NEW_VERSION="$(node .github/scripts/bump-version.mjs)"
+          echo "new_version=$NEW_VERSION" >> "$GITHUB_OUTPUT"
+          echo "已递增版本号 -> $NEW_VERSION"
+
+      - name: Commit version bump
+        # 用 GITHUB_TOKEN 推送的提交不会再次触发 workflow，配合 [skip ci] 双保险
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package.json package-lock.json src-tauri/tauri.conf.json
+          git commit -m "chore: bump version to v${{ steps.bump.outputs.new_version }} [skip ci]"
+          git push
+
+      - name: Setup Rust (Android targets)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          # 4 个 Android ABI，用于 --split-per-abi 分别产出独立 APK
+          targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install NDK
+        # 与 Tauri Android 模板要求的 NDK 版本一致，避免 Gradle 现场下载
+        run: |
+          sdkmanager --install "ndk;27.0.12077973" >/dev/null
+          echo "NDK_HOME=$ANDROID_HOME/ndk/27.0.12077973" >> "$GITHUB_ENV"
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Init Android project
+        run: npm run tauri -- android init
+
+      # tauri android init 生成的工程使用 CLI 模板内置的默认图标；
+      # 用项目图标（src-tauri/icons/android，由 `tauri icon` 生成）覆盖默认图标
+      - name: Apply app icons to Android project
+        run: cp -r src-tauri/icons/android/. src-tauri/gen/android/app/src/main/res/
+
+      # 内网 DeepSeek Harness 地址是明文 HTTP（如 192.168.1.1:3080），
+      # 模板默认 release 禁明文流量，直接把 Manifest 占位符替换为 true（debug/release 均生效）
+      - name: Allow cleartext HTTP for LAN addresses
+        run: sed -i 's|android:usesCleartextTraffic="${usesCleartextTraffic}"|android:usesCleartextTraffic="true"|' src-tauri/gen/android/app/src/main/AndroidManifest.xml
+
+      # Android 15+/16 强制 edge-to-edge，WebView 内容会侵占状态栏；
+      # 在主题中 opt-out，让 App 内容从状态栏下方开始（Android 14- 无此属性，忽略即可）
+      - name: Keep app content below Android status bar
+        run: find src-tauri/gen/android/app/src/main/res -name "themes.xml" -exec sed -i 's|<!-- Customize your theme here. -->|<item name="android:windowOptOutEdgeToEdgeEnforcement">true</item>|' {} +
+
+      # 配置了签名 Secrets（ANDROID_KEYSTORE_BASE64 等）时：注入 release 签名并构建正式签名 release 包；
+      # 未配置时回退 debug 构建（debug 签名可安装，但体积大，仅测试用）
+      - name: Build Android APKs (split per ABI)
+        run: |
+          if [ -n "${ANDROID_KEYSTORE_BASE64:-}" ]; then
+            echo "${ANDROID_KEYSTORE_BASE64}" | base64 -d > "$GITHUB_WORKSPACE/src-tauri/gen/android/upload-keystore.jks"
+            printf 'storePassword=%s\nkeyPassword=%s\nkeyAlias=%s\nstoreFile=%s\n' \
+              "${ANDROID_KEYSTORE_PASSWORD}" \
+              "${ANDROID_KEY_PASSWORD}" \
+              "${ANDROID_KEY_ALIAS}" \
+              "${GITHUB_WORKSPACE}/src-tauri/gen/android/upload-keystore.jks" \
+              > src-tauri/gen/android/keystore.properties
+            python3 .github/scripts/inject-android-signing.py
+            npm run tauri -- android build --apk --split-per-abi
+          else
+            echo "::warning::未配置签名 Secrets（ANDROID_KEYSTORE_*），回退构建 debug 包（体积大，仅测试用）"
+            npm run tauri -- android build --debug --apk --split-per-abi
+          fi
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+
+      - name: Collect APKs with ABI names
+        # 输出目录形如 apk/<abi>/<buildType>/*.apk（ABI 目录用 Rust 目标短名 arm/arm64/x86/x86_64），
+        # 重命名为标准 Android ABI 名（arm→armeabi-v7a、arm64→arm64-v8a），便于按机器选择下载
+        run: |
+          VERSION="${{ steps.bump.outputs.new_version }}"
+          mkdir -p apks
+          count=0
+          while IFS= read -r f; do
+            [ -f "$f" ] || continue
+            lower=$(printf '%s' "$f" | tr 'A-Z' 'a-z')
+            case "$lower" in
+              *arm64*|*aarch64*)  abi="arm64-v8a" ;;
+              *armeabi-v7a*|*v7a*|*/arm/*) abi="armeabi-v7a" ;;
+              *x86_64*|*x86-64*)  abi="x86_64" ;;
+              *x86*|*i686*)       abi="x86" ;;
+              *)                  abi="universal" ;;
+            esac
+            cp "$f" "apks/dsh-app-${abi}-v${VERSION}.apk"
+            count=$((count + 1))
+          done < <(find src-tauri/gen/android/app/build/outputs/apk -name '*.apk')
+          ls -la apks/
+          if [ "$count" -eq 0 ]; then
+            echo "::error::未找到任何 APK，请检查构建步骤日志"
+            exit 1
+          fi
+          echo "共收集 $count 个 APK"
+
+      - name: Tag release version
+        # tag push 不匹配 branches 过滤器，不会重复触发本 workflow；已存在则跳过
+        run: |
+          git tag "v${{ steps.bump.outputs.new_version }}" || echo "tag 已存在"
+          git push origin "v${{ steps.bump.outputs.new_version }}" || echo "tag 已推送"
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.bump.outputs.new_version }}
+          name: dsh-app v${{ steps.bump.outputs.new_version }}
+          body: |
+            ## dsh-app v${{ steps.bump.outputs.new_version }}
+
+            推送自动构建，按 CPU 架构拆分 APK（文件名含 ABI 标识）。
+
+            手机一般选 **arm64-v8a**（64 位，主流）；老设备选 **armeabi-v7a**；模拟器选 x86_64 / x86。
+            下载对应你设备的 APK 直接安装（无需解压）。
+          files: apks/*.apk
+          fail_on_unmatched_files: true

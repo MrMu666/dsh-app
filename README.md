@@ -36,8 +36,10 @@ DeepSeek Harness 客户端：在 App 内打开局域网内指定地址的 DeepSe
 ├── src-tauri/                    # Tauri 壳（Rust）
 │   ├── src/                      # Rust 代码
 │   └── tauri.conf.json           # 应用配置（名称 / 标识符 / 窗口 / 图标）
-└── .github/workflows/
-    └── mobile-build.yml          # Android(APK/AAB) + iOS(IPA) 打包工作流
+└── .github/
+    ├── scripts/bump-version.mjs  # CI 版本递增（patch +1）
+    └── workflows/
+        └── build-android.yml     # 推送自动：递增版本 → 各架构 APK → GitHub Release
 ```
 
 ## 本地开发（仅写代码，不打包）
@@ -51,25 +53,29 @@ npm run tauri dev  # 启动桌面开发模式（本机已具备 Rust + MSVC + We
 
 DeepSeek Harness 通常部署在局域网、以 `http://192.168.1.1:3080` 明文访问，而移动系统默认禁止：
 
-- **Android**：使用 `--debug` 构建，Tauri Android 模板的 debug 构建自动放行明文流量
-  （`usesCleartextTraffic=true`），无需额外配置。
-- **iOS**：CI 构建时自动注入 `NSAppTransportSecurity > NSAllowsArbitraryLoads` 豁免
-  （见 workflow 的 "Allow cleartext HTTP (ATS) for LAN addresses" 步骤）。
+- **Android**：CI 构建时把模板 Manifest 的 `usesCleartextTraffic` 占位符改写为 `true`（debug / release 均生效），
+  局域网明文地址（`http://192.168.1.1:3080`）可直接访问。
+- **iOS**：当前 CI 只打包 Android（见下），iOS 工作流已移除。
 
 ## CI 打包（GitHub Actions）
 
-推送到 GitHub 后：
+推送到 GitHub 后**全自动**（无需手动打 tag）：
 
-1. **手动触发**：仓库 Actions 页面 → `mobile-build` → Run workflow，可选 `both / android / ios`；
-   构建完成后**默认自动发布 GitHub Release**（可取消勾选 `publish_release`，也可自定义 `release_tag`）；
-2. **打 tag 自动触发**：`git tag v0.1.0 && git push origin v0.1.0`，同时构建 Android 和 iOS；
-   Android 产物自动发布到 GitHub Release，iOS 产物在 Actions artifacts 中下载。
+1. **推送 `main` / `master` 自动触发**：先递增小版本号（patch +1，`.github/scripts/bump-version.mjs`）
+   并把改动提交回仓库（`package.json` / `package-lock.json` / `src-tauri/tauri.conf.json`）；
+2. 初始化 Android 工程（`tauri android init`）→ 覆盖应用图标 → 放行局域网明文 HTTP → 状态栏 opt-out；
+3. 构建**按 CPU 架构拆分**的签名 APK（`--apk --split-per-abi`，4 个 ABI 各一个包）；
+4. 打 tag `v<版本>` 并创建 GitHub Release，资产为各架构 APK
+   （文件名 `dsh-app-<abi>-v<版本>.apk`，直接从 Release 页下载 .apk 文件，不用 Artifact，避免 zip 压缩包）。
 
-Android 工程与 iOS 工程（`gen/apple`）均在 CI 内自动生成（iOS 需要 macOS runner 执行
-`tauri ios init`），无需在本地生成或提交。
+- **手动触发**：仓库 Actions 页面 → `build-android` → Run workflow（同样递增版本并发布）。
+- 版本号唯一来源是 `package.json`；`src-tauri/tauri.conf.json` 的 `version` 指向 `../package.json`，
+  Android 的 `versionCode` 由 Tauri 按 `major*1000000 + minor*1000 + patch` 推导，随 patch 递增，新包可直接覆盖安装。
+
+Android 工程（`src-tauri/gen/android`）由 CI 自动生成，无需在本地生成或提交。
 
 > 说明：tauri-action 的移动端支持从未发布（仅 dev 分支），因此 workflow 直接调用
-> `tauri` CLI 构建（`android build --debug --apk --aab` / `ios build`）。
+> `tauri` CLI 构建（`android build --apk --split-per-abi`）。
 
 ### 需要配置的 Secrets（仓库 Settings → Secrets and variables → Actions）
 
@@ -79,17 +85,13 @@ Android 工程与 iOS 工程（`gen/apple`）均在 CI 内自动生成（iOS 需
 | `ANDROID_KEYSTORE_BASE64` | Android 正式包必填 | keystore 文件的 base64（`certutil -encode` / `base64` 生成）；配置后构建**正式签名 release 包**（按 ABI 拆分，单包 20–35MB） |
 | `ANDROID_KEYSTORE_PASSWORD` / `ANDROID_KEY_PASSWORD` | 同上 | keystore 与密钥密码（建议只用字母数字） |
 | `ANDROID_KEY_ALIAS` | 同上 | 密钥别名（如 `upload`） |
-| `APPLE_CERTIFICATE` / `APPLE_CERTIFICATE_PASSWORD` / `APPLE_SIGNING_IDENTITY` / `APPLE_ID` / `APPLE_PASSWORD` / `APPLE_TEAM_ID` | iOS 真机包必填 | iOS 签名，需要 Apple Developer Program 付费账号；**不配则 iOS 构建失败**（预期行为） |
 
 > Android 未配置签名 Secrets 时，回退构建 debug 签名包（可安装测试，但体积大，约 400MB）；
-> 配置后构建正式签名 release 包（APK/AAB，`--split-per-abi` 按架构拆分，单包约 20–35MB）。
+> 配置后构建正式签名 release 包（`--split-per-abi` 按架构拆分，单包约 20–35MB）。
 > keystore 生成命令：`keytool -genkey -v -keystore upload-keystore.jks -storetype JKS -keyalg RSA -keysize 2048 -validity 10000 -alias upload`（JDK 自带 keytool）。
 
-### iOS 注意事项
-
-- iOS 的 Xcode 工程（`src-tauri/gen/apple`）只能由 **macOS** 生成，CI 的 macos-14 runner 会自动执行
-  `tauri ios init` 完成，Windows 本机无法交叉编译 iOS。
-- 免费 Apple 账号无法在 CI 上长期签名分发；未配置签名 Secrets 时真机构建会失败。
+> iOS 打包已移除（本 workflow 只出 Android 包）；如需恢复，可从 git 历史取回原 `mobile-build.yml`
+> （macOS runner + `tauri ios init` + IPA 产物）。
 
 ## 应用标识
 
