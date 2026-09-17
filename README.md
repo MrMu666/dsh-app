@@ -27,7 +27,8 @@ DeepSeek Harness 客户端：在 App 内打开局域网内指定地址的 DeepSe
   需要重新加载时关闭该地址窗口再打开即可。
 - **Android（移动端）**：系统不支持在一个 App 内开多个窗口，点击地址直接**在本应用内**
   打开该页面（本窗口内顶层导航，Cookie / 登录状态同样是第一方，行为与系统浏览器一致）；
-  按系统返回键 / 返回手势即可回到地址中枢，再次打开会重新加载页面。
+  页面顶部有**原生工具条**（← 返回地址中枢、⟳ 刷新、点中间地址可切换历史地址），
+  按系统返回键同样回到地址中枢。
 - **Android 状态栏**：App 内容不侵占状态栏（CI 构建时自动配置 edge-to-edge opt-out）。
 
 ## 目录结构
@@ -46,10 +47,23 @@ DeepSeek Harness 客户端：在 App 内打开局域网内指定地址的 DeepSe
 │   ├── capabilities/default.json # 窗口能力（创建/显示/聚焦窗口所需权限）
 │   └── tauri.conf.json           # 应用配置（名称 / 标识符 / 窗口 / 图标）
 └── .github/
+    ├── android/MainActivity.kt   # 安卓原生顶部工具条（CI 覆盖模板生成的 MainActivity）
     ├── scripts/bump-version.mjs  # CI 版本递增（patch +1）
     └── workflows/
         └── build-android.yml     # 推送自动：递增版本 → 各架构 APK → GitHub Release
 ```
+
+## 安卓顶部工具条（应用内，原生实现）
+
+安卓上每个 Activity 只有一个 WebView，远程 DeepSeek Harness 页面又**不能**放进 iframe
+（第三方上下文会让登录 Cookie 被丢弃、局域网口令页反复闪烁），所以「页面顶部的功能栏」
+只能由**原生 Android View** 叠在 WebView 上方：
+
+- 按钮：`←` 返回地址中枢、`⟳` 刷新、点中间的地址可下拉切换历史地址；
+- 系统返回键在浏览页面时同样回到地址中枢（不会直接退出 App）；
+- 工具条与页面都避让状态栏（构建时已配置 edge-to-edge opt-out，工具条自身也按 insets 兜底）；
+- 实现文件是 `.github/android/MainActivity.kt`，由 CI 在 `tauri android init` 之后覆盖模板生成的那份；
+  模板每次构建都会重新生成，所以改动请改仓库里这份，不要改 `src-tauri/gen/`。
 
 ## 本地开发（仅写代码，不打包）
 

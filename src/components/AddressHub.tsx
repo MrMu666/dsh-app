@@ -1,7 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Welcome from "./Welcome";
 import { loadAddresses, normalizeAddress, saveAddresses } from "../lib/addresses";
-import { listOpenAddresses, onAddressWindowClosed, openAddressWindow } from "../lib/windows";
+import {
+  hideNativeTopBar,
+  listOpenAddresses,
+  onAddressWindowClosed,
+  openAddressWindow,
+} from "../lib/windows";
 
 /**
  * 地址中枢：应用的主窗口内容。
@@ -27,6 +32,8 @@ function AddressHub() {
 
   // 监听地址窗口关闭 → 刷新「已打开」标记；挂载时先同步一次
   useEffect(() => {
+    // 中枢页重新加载时兜底收起安卓原生工具条（正常路径由原生层自己隐藏）
+    hideNativeTopBar();
     let unlisten: (() => void) | null = null;
     let cancelled = false;
     void (async () => {
@@ -71,7 +78,8 @@ function AddressHub() {
 
       void (async () => {
         try {
-          const result = await openAddressWindow(address);
+          // 把刚存下的历史一并交给打开逻辑：安卓原生工具条要用它做「切换地址」菜单
+          const result = await openAddressWindow(address, next);
           if (result === "popup") {
             showNotice("已在新标签页打开（当前是浏览器调试环境）");
           }

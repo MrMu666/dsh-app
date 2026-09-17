@@ -87,6 +87,28 @@ jobs:
       - name: Apply app icons to Android project
         run: cp -r src-tauri/icons/android/. src-tauri/gen/android/app/src/main/res/
 
+      # 应用内浏览 DSH 页面时的原生顶部工具条（返回中枢 / 刷新 / 当前地址 + 切换）：
+      # Android 上每个 Activity 只有一个 WebView、远程页面又不能放进 iframe，
+      # 所以工具条只能是原生 View —— 用仓库里的 MainActivity.kt 覆盖 CLI 模板生成的那份
+      # （模板每次 CI 都重新生成，所以必须在这里覆盖；设计说明见 AGENTS.md 第 2、4 节）
+      - name: Inject native top bar (MainActivity.kt)
+        run: |
+          PKG="$(sed -n 's/.*"identifier"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' src-tauri/tauri.conf.json | head -n 1)"
+          if [ -z "$PKG" ]; then
+            echo "::error::未能从 src-tauri/tauri.conf.json 解析出 identifier"
+            exit 1
+          fi
+          DIR="src-tauri/gen/android/app/src/main/java/$(printf '%s' "$PKG" | tr '.' '/')"
+          if [ ! -f "$DIR/MainActivity.kt" ]; then
+            echo "::error::未找到 $DIR/MainActivity.kt，tauri android init 的工程结构可能已变化"
+            exit 1
+          fi
+          echo "--- 模板原始 MainActivity.kt（Tauri 升级后对照用） ---"
+          cat "$DIR/MainActivity.kt"
+          sed "s/__PACKAGE__/$PKG/g" .github/android/MainActivity.kt > "$DIR/MainActivity.kt"
+          grep -q 'dshBar' "$DIR/MainActivity.kt"
+          echo "已注入原生工具条 -> $DIR/MainActivity.kt"
+
       # 内网 DeepSeek Harness 地址是明文 HTTP（如 192.168.1.1:3080），
       # 模板默认 release 禁明文流量，直接把 Manifest 占位符替换为 true（debug/release 均生效）
       - name: Allow cleartext HTTP for LAN addresses

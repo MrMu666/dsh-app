@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { isValidAddress, normalizeAddress } from "../lib/addresses";
-import { isMobileShell } from "../lib/windows";
+import { hasNativeTopBar, isMobileShell } from "../lib/windows";
 import "./Welcome.css";
 
 interface WelcomeProps {
@@ -17,8 +17,20 @@ interface WelcomeProps {
 function Welcome({ addresses, opened, onEnter, onRemove }: WelcomeProps) {
   const [input, setInput] = useState("");
   const [error, setError] = useState<string | null>(null);
-  /** 移动端没有多窗口：点地址就是本窗口导航过去，返回只能靠系统返回键 */
+  /** 移动端没有多窗口：点地址就是本窗口导航过去 */
   const mobileShell = isMobileShell();
+  /** 安卓包里有原生顶部工具条（返回中枢 / 刷新 / 切换地址） */
+  const nativeBar = hasNativeTopBar();
+
+  /** 底部说明：桌面窗口 / 安卓原生工具条 / 其他移动端，承载方式不同，措辞也不同 */
+  const note = nativeBar
+    ? "点击地址会在本应用内打开该页面，顶部工具条可随时返回本页、刷新或切换地址；" +
+      "Cookie 与登录状态与浏览器一致。"
+    : mobileShell
+      ? "点击地址会在本应用内打开该页面（同一个窗口，Cookie 与登录状态与浏览器一致）；" +
+        "按系统返回键 / 返回手势回到本页，再次打开会重新加载页面。"
+      : "每个地址在独立窗口中打开（Cookie 与登录状态各自独立、窗口存活期间不会自动重载）；" +
+        "再次点击同一地址只切换到已打开的窗口，需要重新加载时关闭窗口再打开即可。";
 
   function submit(e: FormEvent) {
     e.preventDefault();
@@ -86,13 +98,7 @@ function Welcome({ addresses, opened, onEnter, onRemove }: WelcomeProps) {
 
         {error && <p className="address-error">{error}</p>}
 
-        <p className="welcome-note">
-          {mobileShell
-            ? "点击地址会在本应用内打开该页面（同一个窗口，Cookie 与登录状态与浏览器一致）；" +
-              "按系统返回键 / 返回手势回到本页，再次打开会重新加载页面。"
-            : "每个地址在独立窗口中打开（Cookie 与登录状态各自独立、窗口存活期间不会自动重载）；" +
-              "再次点击同一地址只切换到已打开的窗口，需要重新加载时关闭窗口再打开即可。"}
-        </p>
+        <p className="welcome-note">{note}</p>
       </div>
     </div>
   );
