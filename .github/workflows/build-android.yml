@@ -64,6 +64,11 @@ jobs:
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          # 该 action 的 packages 默认值是 "tools platform-tools"，而 legacy `tools` 包已从
+          # SDK 仓库下线，sdkmanager 会以 "Failed to find package 'tools'" 退出码 1 失败；
+          # 因此显式只装 platform-tools，SDK 平台与 build-tools 由 Gradle 按需自动下载
+          packages: 'platform-tools'
 
       - name: Install NDK
         # 与 Tauri Android 模板要求的 NDK 版本一致，避免 Gradle 现场下载
