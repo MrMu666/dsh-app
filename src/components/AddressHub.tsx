@@ -6,10 +6,11 @@ import { listOpenAddresses, onAddressWindowClosed, openAddressWindow } from "../
 /**
  * 地址中枢：应用的主窗口内容。
  *
- * 主窗口不再承载任何远程页面（原先用 iframe 承载，导致 DSH 处于第三方上下文、
+ * 主窗口不承载任何远程页面（原先用 iframe 承载，导致 DSH 处于第三方上下文、
  * 登录 Cookie 被 WebView 丢弃，口令页反复闪烁且无法输入）。这里只维护
- * 「地址历史 + 已打开地址」，真正的 DeepSeek Harness 页面由
- * {@link openAddressWindow} 在独立顶层窗口中打开。
+ * 「地址历史 + 已打开地址」；DeepSeek Harness 页面由 {@link openAddressWindow}
+ * 打开 —— 桌面端是独立顶层窗口，移动端是本窗口顶层导航（详见 lib/windows.ts；
+ * 导航会卸载本页，所以历史记录必须同步落盘）。
  */
 function AddressHub() {
   const [addresses, setAddresses] = useState<string[]>(() => loadAddresses());
@@ -55,23 +56,24 @@ function AddressHub() {
     noticeTimer.current = window.setTimeout(() => setNotice(null), 4000);
   }, []);
 
-  /** 打开（或聚焦）某个地址的 GUI 窗口，并把它提到历史列表最前 */
+  /** 打开（或聚焦）某个地址的页面，并把它提到历史列表最前 */
   const handleEnter = useCallback(
     (raw: string) => {
       const address = normalizeAddress(raw);
       setError(null);
+
+      // 先**同步**把地址写进历史再打开：移动端是「本窗口导航」到目标地址，
+      // 中枢页随即被卸载，而放进 setState 更新函数里的持久化要等 React 渲染，
+      // 不一定来得及执行（渲染是异步调度的，导航可先发生）。
+      const next = [address, ...loadAddresses().filter((a) => a !== address)];
+      saveAddresses(next);
+      setAddresses(next);
+
       void (async () => {
         try {
           const result = await openAddressWindow(address);
-          setAddresses((prev) => {
-            const next = [address, ...prev.filter((a) => a !== address)];
-            saveAddresses(next);
-            return next;
-          });
           if (result === "popup") {
             showNotice("已在新标签页打开（当前是浏览器调试环境）");
-          } else if (result === "external") {
-            showNotice("已在系统浏览器中打开（移动端不支持多窗口）");
           }
           await refreshOpen();
         } catch (reason) {

@@ -1,13 +1,14 @@
 import { useState, type FormEvent } from "react";
 import { isValidAddress, normalizeAddress } from "../lib/addresses";
+import { isMobileShell } from "../lib/windows";
 import "./Welcome.css";
 
 interface WelcomeProps {
   /** 输入过的地址列表（展示形式，最近的在前） */
   addresses: string[];
-  /** 已经在本应用内打开的地址（用于标记「已打开」） */
+  /** 已经在本应用内打开的地址（用于标记「已打开」；移动端恒为空） */
   opened: ReadonlySet<string>;
-  /** 进入某个地址（在新的顶层窗口打开；已打开则聚焦） */
+  /** 进入某个地址（桌面端：新建/聚焦独立窗口；移动端：本窗口内打开） */
   onEnter: (address: string) => void;
   /** 从历史列表中移除某个地址 */
   onRemove: (address: string) => void;
@@ -16,6 +17,8 @@ interface WelcomeProps {
 function Welcome({ addresses, opened, onEnter, onRemove }: WelcomeProps) {
   const [input, setInput] = useState("");
   const [error, setError] = useState<string | null>(null);
+  /** 移动端没有多窗口：点地址就是本窗口导航过去，返回只能靠系统返回键 */
+  const mobileShell = isMobileShell();
 
   function submit(e: FormEvent) {
     e.preventDefault();
@@ -84,8 +87,11 @@ function Welcome({ addresses, opened, onEnter, onRemove }: WelcomeProps) {
         {error && <p className="address-error">{error}</p>}
 
         <p className="welcome-note">
-          每个地址在独立窗口中打开（Cookie 与登录状态各自独立、窗口存活期间不会自动重载）；
-          再次点击同一地址只切换到已打开的窗口，需要重新加载时关闭窗口再打开即可。
+          {mobileShell
+            ? "点击地址会在本应用内打开该页面（同一个窗口，Cookie 与登录状态与浏览器一致）；" +
+              "按系统返回键 / 返回手势回到本页，再次打开会重新加载页面。"
+            : "每个地址在独立窗口中打开（Cookie 与登录状态各自独立、窗口存活期间不会自动重载）；" +
+              "再次点击同一地址只切换到已打开的窗口，需要重新加载时关闭窗口再打开即可。"}
         </p>
       </div>
     </div>
